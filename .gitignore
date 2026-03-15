@@ -1,0 +1,24 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Secrets
+*.key
+*.pem
+auth-profiles.json
+credentials/
+
+# Logs
+*.log
+logs/
+
+# Temp
+tmp/
+*.tmp

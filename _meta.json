@@ -1,0 +1,27 @@
+{
+  "name": "educlaw-ielts-planner",
+  "version": "1.0.0",
+  "description": "EduClaw - Personal IELTS Study Secretary: automated planning, Google Calendar scheduling via gcalcli, unique lesson plans per session, Google Sheet progress tracking, Discord notifications, bilingual support (EN/VI).",
+  "author": "moclaw",
+  "emoji": "📚",
+  "license": "MIT",
+  "homepage": "https://github.com/moclaw/educlaw-ielts-planner",
+  "repository": "https://github.com/moclaw/educlaw-ielts-planner",
+  "requires": {
+    "bins": ["gcalcli"],
+    "skills": ["gcalcli-calendar"]
+  },
+  "tags": [
+    "education",
+    "ielts",
+    "english",
+    "calendar",
+    "study-plan",
+    "google-calendar",
+    "discord",
+    "cron",
+    "bilingual",
+    "progress-tracking"
+  ],
+  "languages": ["en", "vi"]
+}
