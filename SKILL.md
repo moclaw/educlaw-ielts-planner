@@ -206,7 +206,7 @@ gcalcli --nocolor add --noprompt \
 - Confirm event time is within `preferred_slots`.
 - Confirm timezone is Asia/Ho_Chi_Minh.
 - If time drifts outside window → STOP, ask user.
-- **Event deletion:** ONLY allowed for IELTS events created by EduClaw that have a matching eventId in `workspace/tracker/sessions.json`. MUST ask user confirmation before deleting. Use: `yes | gcalcli delete "IELTS Phase X | Session Y"` (match by title). After deletion, update sessions.json status to "Deleted" with reason.
+- **Event deletion:** ONLY allowed for IELTS events created by EduClaw that have a matching event_id in the `sessions` table of `workspace/tracker/educlaw.db`. MUST ask user confirmation before deleting. Use: `yes | gcalcli delete "IELTS Phase X | Session Y"` (match by title). After deletion, run `sqlite3 workspace/tracker/educlaw.db "UPDATE sessions SET status='Deleted', notes='<reason>' WHERE event_id='...';"`.
 
 **2.5. Report results** (in `user_lang`)
 - Total events created, date/time list, conflicts resolved.
@@ -301,7 +301,7 @@ Goal: Stabilize 7.0-7.5, exam-ready.
 ## GUARDRAILS — MANDATORY
 
 ### 🚫 NEVER:
-1. **Delete Calendar events NOT tracked in sessions.json** → NEVER delete events that EduClaw did not create. Only events with a matching eventId in `workspace/tracker/sessions.json` may be deleted, and ONLY after user confirmation.
+1. **Delete Calendar events NOT tracked in the SQLite database** → NEVER delete events that EduClaw did not create. Only events with a matching event_id in `workspace/tracker/educlaw.db` sessions table may be deleted, and ONLY after user confirmation.
 2. **Auto-select time slots** → MUST ask user first (Step 0).
 3. **Place events outside chosen window** → ASK if blocked, don't auto-move.
 4. **Delete files/emails** → Only CREATE and EDIT your own files.
@@ -411,9 +411,9 @@ SELF-CHECK (complete after session):
 [ ] Reviewed 5 words from previous session
 [ ] Noted 2-3 weak points to address next session
 [ ] Updated progress tracker in IELTS_STUDY_PLAN.md
-[ ] Updated tracker/sessions.json (status, score, notes)
-[ ] Updated tracker/vocabulary.json (new words added)
-[ ] Updated tracker/materials.json (status of used resources)
+[ ] Updated educlaw.db sessions table (status, score, notes)
+[ ] Updated educlaw.db vocabulary table (new words added)
+[ ] Updated educlaw.db materials table (status of used resources)
 ```
 
 ### CRITICAL — EACH EVENT DESCRIPTION MUST BE 100% UNIQUE
@@ -512,7 +512,7 @@ openclaw cron add \
   --tz "$(timedatectl show --property=Timezone --value)" \
   --channel discord \
   --announce \
-  --message "You are EduClaw daily prep assistant. Silently check tomorrow IELTS session from gcalcli and workspace/tracker/sessions.json. Read workspace/tracker/vocabulary.json for review words. Then send a clean prep message: tomorrow session topic, key vocabulary to preview (10 words with IPA), recommended materials with URLs, and what to review from last session. End with a motivational note. Never show internal steps or tool calls." \
+  --message "You are EduClaw daily prep assistant. Silently query workspace/tracker/educlaw.db for tomorrow's session (SELECT * FROM sessions WHERE date=date('now','+1 day') AND status='Planned') and review words (SELECT word,ipa,meaning FROM vocabulary WHERE mastered=0 ORDER BY review_count LIMIT 10). Also check gcalcli for conflicts. Then send a clean prep message: tomorrow session topic, key vocabulary to preview (10 words with IPA), recommended materials with URLs, and what to review from last session. End with a motivational note. Never show internal steps or tool calls." \
   --model "google/gemini-2.5-flash"
 ```
 
@@ -536,7 +536,7 @@ openclaw cron add \
   --tz "$(timedatectl show --property=Timezone --value)" \
   --channel discord \
   --announce \
-  --message "You are EduClaw weekly reporter. Silently gather data from gcalcli (past week sessions) and workspace/tracker/ files (sessions.json, vocabulary.json, weekly-summary.json). Then present a clean weekly summary: sessions completed vs planned, skills practiced, vocabulary count, areas needing work, and suggestions for next week. Update weekly-summary.json. Ask user to confirm or adjust next week plan. Never show internal reasoning or data-gathering steps." \
+  --message "You are EduClaw weekly reporter. Silently query workspace/tracker/educlaw.db: sessions (SELECT count(*),sum(status='Completed') FROM sessions WHERE date>=date('now','-7 days')), vocabulary (SELECT count(*),sum(mastered) FROM vocabulary), weekly_summaries. Also check gcalcli for past week. Then present a clean weekly summary: sessions completed vs planned, skills practiced, vocabulary count, areas needing work, and suggestions for next week. INSERT/UPDATE weekly_summaries in educlaw.db. Ask user to confirm or adjust next week plan. Never show internal reasoning or data-gathering steps." \
   --model "google/gemini-2.5-flash"
 ```
 
@@ -548,7 +548,7 @@ openclaw cron add \
   --tz "$(timedatectl show --property=Timezone --value)" \
   --channel discord \
   --announce \
-  --message "You are EduClaw material curator. Silently check workspace/tracker/materials.json and next week plan from gcalcli. Then present new free materials found: title, URL, skill, level. Ask user which to add to the library. Wait for reply before updating materials.json. Never show search process or internal steps." \
+  --message "You are EduClaw material curator. Silently query workspace/tracker/educlaw.db (SELECT * FROM materials WHERE status='Not Started') and next week plan from gcalcli. Then present new free materials found: title, URL, skill, level. Ask user which to add to the library. Wait for reply before inserting into educlaw.db materials table. Never show search process or internal steps." \
   --model "google/gemini-2.5-flash"
 ```
 
@@ -572,7 +572,7 @@ openclaw cron add \
 
 ### Mid-course plan change
 - Ask what to adjust.
-- **If user wants to replace events:** Delete old IELTS events (ONLY those tracked in sessions.json with eventId) after user confirmation, then create updated ones. Update sessions.json status to "Replaced" with notes.
+- **If user wants to replace events:** Delete old IELTS events (ONLY those tracked in educlaw.db sessions table with event_id) after user confirmation, then create updated ones. Run `sqlite3 workspace/tracker/educlaw.db "UPDATE sessions SET status='Replaced', notes='<reason>' WHERE event_id='...';"` for each replaced event.
 - **If user wants to add sessions:** Create new events alongside existing ones.
 
 ### Missed sessions
@@ -618,122 +618,215 @@ Reply with 1, 2, or 3.
 - NEVER silently reschedule or skip a study session.
 - NEVER auto-resolve calendar conflicts — ALWAYS ask user via Discord.
 - If user doesn't respond within 2 hours → send a follow-up reminder.
-- Log all conflicts and resolutions in progress tracker files.
+- Log all conflicts and resolutions in `workspace/tracker/educlaw.db` (update sessions table with status and notes).
 
 ---
 
-## PROGRESS TRACKER (Local JSON Files — Single Source of Truth)
+## PROGRESS TRACKER (SQLite Database — Single Source of Truth)
 
-**The agent MUST use local JSON files in the workspace as the progress database. These files are the single source of truth for all tracking.**
+**The agent MUST use a SQLite database as the progress tracker. This database is the single source of truth for all tracking, reports, and history lookups.**
 
-**Why local files (not Google Sheets):** The agent does not have Google Sheets API access. Local JSON files can be read/written directly by the agent and all cron jobs without external dependencies.
+**Why SQLite (not JSON files or Google Sheets):** SQLite is a single-file relational database that supports complex queries (aggregations, joins, filters), is ACID-compliant, and can be read/written by the agent via `sqlite3` CLI or `python3 -c "import sqlite3; ..."`. No external API access needed. Reports and cron jobs query the DB directly for real data.
 
-### File setup (agent creates on FIRST RUN — Step 0):
+### Database file
+```
+workspace/tracker/educlaw.db
+```
 
-On FIRST RUN, immediately after asking study hours and BEFORE creating calendar events, create ALL 4 tracker files:
+### Database setup (agent creates on FIRST RUN — Step 0):
+
+On FIRST RUN, immediately after asking study hours and BEFORE creating calendar events, initialize the database:
 
 ```bash
 mkdir -p workspace/tracker
+sqlite3 workspace/tracker/educlaw.db < skills/educlaw-ielts-planner-1.0.0/schema.sql
 ```
 
-### File 1: `workspace/tracker/sessions.json`
-```json
-{
-  "sessions": [
-    {
-      "date": "2026-03-16",
-      "phase": 1,
-      "session": 1,
-      "skill": "Listening",
-      "topic": "Section 1-2 Gap Fill",
-      "eventId": "IELTS Phase 1 | Session 1 - Listening: Section 1-2 Gap Fill",
-      "status": "Planned",
-      "score": null,
-      "durationMin": 90,
-      "vocabCount": 10,
-      "weakAreas": "",
-      "materialsUsed": "",
-      "notes": ""
-    }
-  ]
-}
-```
-- **eventId**: Calendar event title — used as identifier for delete/update operations.
-- **status**: `Planned` / `Completed` / `Missed` / `Rescheduled` / `Deleted` / `Replaced`.
-- **MUST add an entry for EVERY event created.** This is the reference for which events the agent is allowed to delete.
+Or if schema.sql is unavailable, create inline:
+```bash
+mkdir -p workspace/tracker
+sqlite3 workspace/tracker/educlaw.db <<'SQL'
+PRAGMA journal_mode = WAL;
+PRAGMA foreign_keys = ON;
 
-### File 2: `workspace/tracker/vocabulary.json`
-```json
-{
-  "words": [
-    {
-      "word": "accommodation",
-      "ipa": "/əˌkɒməˈdeɪʃn/",
-      "pos": "noun",
-      "meaning": "noi o, cho o",
-      "collocations": "student accommodation, temporary accommodation",
-      "example": "The university provides accommodation for first-year students.",
-      "topic": "Education",
-      "dateAdded": "2026-03-16",
-      "reviewCount": 0,
-      "mastered": false
-    }
-  ]
-}
-```
+CREATE TABLE IF NOT EXISTS sessions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    date TEXT NOT NULL,
+    phase INTEGER NOT NULL,
+    session INTEGER NOT NULL,
+    skill TEXT NOT NULL,
+    topic TEXT NOT NULL,
+    event_id TEXT NOT NULL UNIQUE,
+    status TEXT NOT NULL DEFAULT 'Planned',
+    score REAL,
+    duration_min INTEGER NOT NULL DEFAULT 90,
+    vocab_count INTEGER NOT NULL DEFAULT 10,
+    weak_areas TEXT NOT NULL DEFAULT '',
+    materials_used TEXT NOT NULL DEFAULT '',
+    notes TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
 
-### File 3: `workspace/tracker/materials.json`
-```json
-{
-  "materials": [
-    {
-      "title": "Cambridge IELTS 18",
-      "type": "Book",
-      "reference": "Test 1, Listening Section 1-2 (p.4-8)",
-      "skill": "Listening",
-      "phase": 1,
-      "status": "Not Started",
-      "rating": null,
-      "notes": ""
-    }
-  ]
-}
-```
+CREATE TABLE IF NOT EXISTS vocabulary (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    word TEXT NOT NULL,
+    ipa TEXT NOT NULL DEFAULT '',
+    pos TEXT NOT NULL DEFAULT '',
+    meaning TEXT NOT NULL DEFAULT '',
+    collocations TEXT NOT NULL DEFAULT '',
+    example TEXT NOT NULL DEFAULT '',
+    topic TEXT NOT NULL DEFAULT '',
+    session_id INTEGER,
+    date_added TEXT NOT NULL DEFAULT (date('now')),
+    review_count INTEGER NOT NULL DEFAULT 0,
+    mastered INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (session_id) REFERENCES sessions(id)
+);
 
-### File 4: `workspace/tracker/weekly-summary.json`
-```json
-{
-  "weeks": [
-    {
-      "week": 1,
-      "phase": 1,
-      "sessionsPlanned": 12,
-      "sessionsCompleted": 0,
-      "completionRate": 0,
-      "vocabLearned": 0,
-      "mockScore": null,
-      "weakFocus": "",
-      "adjustments": ""
-    }
-  ]
-}
+CREATE TABLE IF NOT EXISTS materials (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    type TEXT NOT NULL DEFAULT 'Book',
+    reference TEXT NOT NULL DEFAULT '',
+    skill TEXT NOT NULL DEFAULT '',
+    phase INTEGER,
+    status TEXT NOT NULL DEFAULT 'Not Started',
+    rating INTEGER,
+    notes TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS weekly_summaries (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    week INTEGER NOT NULL,
+    phase INTEGER NOT NULL,
+    sessions_planned INTEGER NOT NULL DEFAULT 0,
+    sessions_completed INTEGER NOT NULL DEFAULT 0,
+    completion_rate REAL NOT NULL DEFAULT 0,
+    vocab_learned INTEGER NOT NULL DEFAULT 0,
+    mock_score REAL,
+    weak_focus TEXT NOT NULL DEFAULT '',
+    adjustments TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+SQL
 ```
 
-### How the agent uses the tracker files:
-1. **On FIRST RUN (Step 0):** Create all 4 JSON files IMMEDIATELY. Do NOT skip or delay.
-2. **When creating calendar events (Step 2):** Add an entry to `sessions.json` for EACH event with `eventId` matching the calendar event title.
-3. **After each study session:** Update `sessions.json` (status → Completed, add score), add new words to `vocabulary.json`.
-4. **During daily prep cron:** Read `sessions.json` for history, `vocabulary.json` for review words.
-5. **During weekly report cron:** Read all 4 files, calculate completion rates, update `weekly-summary.json`.
-6. **When searching materials:** Check `materials.json` to avoid duplicates, update status after use.
-7. **Calendar conflict resolution:** Update `sessions.json` status to Rescheduled/Deleted with notes.
-8. **When deleting events:** Verify `eventId` exists in `sessions.json` BEFORE deleting. Update status to Deleted.
+### 4 Tables in the database
+
+#### Table 1: `sessions` — study session log
+| Column | Type | Description |
+|--------|------|-------------|
+| date | TEXT | Session date (YYYY-MM-DD) |
+| phase | INT | Phase number (1-4) |
+| session | INT | Session number within phase |
+| skill | TEXT | Listening / Reading / Writing / Speaking |
+| topic | TEXT | Session topic |
+| event_id | TEXT UNIQUE | Calendar event title — used for delete/update |
+| status | TEXT | Planned / Completed / Missed / Rescheduled / Deleted / Replaced |
+| score | REAL | Score after session (nullable) |
+| duration_min | INT | Duration in minutes |
+| vocab_count | INT | Number of vocab words |
+| weak_areas | TEXT | Comma-separated weak areas |
+| materials_used | TEXT | Materials actually used |
+| notes | TEXT | Free-form notes |
+
+**MUST insert a row for EVERY calendar event created.** This is the reference for which events the agent is allowed to delete.
+
+#### Table 2: `vocabulary` — word bank
+| Column | Type | Description |
+|--------|------|-------------|
+| word | TEXT | The vocabulary word |
+| ipa | TEXT | IPA pronunciation |
+| pos | TEXT | Part of speech |
+| meaning | TEXT | Meaning in user_lang |
+| collocations | TEXT | Common collocations |
+| example | TEXT | Example sentence |
+| topic | TEXT | IELTS topic category |
+| session_id | INT | FK to sessions.id |
+| review_count | INT | Times reviewed (spaced repetition) |
+| mastered | INT | 0=learning, 1=mastered |
+
+#### Table 3: `materials` — resource library
+| Column | Type | Description |
+|--------|------|-------------|
+| title | TEXT | Resource title |
+| type | TEXT | Book / Website / Video / App |
+| reference | TEXT | Page/section/URL |
+| skill | TEXT | Target skill |
+| phase | INT | Phase number |
+| status | TEXT | Not Started / In Progress / Completed |
+| rating | INT | 1-5 user rating |
+
+#### Table 4: `weekly_summaries` — weekly progress snapshots
+| Column | Type | Description |
+|--------|------|-------------|
+| week | INT | Week number (1-16) |
+| phase | INT | Phase number (1-4) |
+| sessions_planned | INT | Total planned |
+| sessions_completed | INT | Total completed |
+| completion_rate | REAL | Percentage 0-100 |
+| vocab_learned | INT | Words learned this week |
+| mock_score | REAL | Mock test score |
+| weak_focus | TEXT | Areas needing work |
+| adjustments | TEXT | Plan adjustments made |
+
+### How the agent uses the SQLite database
+
+#### Writing data (INSERT/UPDATE):
+```bash
+# Insert a session when creating a calendar event
+sqlite3 workspace/tracker/educlaw.db "INSERT INTO sessions (date, phase, session, skill, topic, event_id, status, duration_min, vocab_count) VALUES ('2026-03-16', 1, 1, 'Listening', 'Section 1-2 Gap Fill', 'IELTS Phase 1 | Session 1 - Listening: Section 1-2 Gap Fill', 'Planned', 90, 10);"
+
+# Mark session completed with score
+sqlite3 workspace/tracker/educlaw.db "UPDATE sessions SET status='Completed', score=7.5, notes='Good progress on gap-fill' WHERE event_id='IELTS Phase 1 | Session 1 - Listening: Section 1-2 Gap Fill';"
+
+# Add vocabulary
+sqlite3 workspace/tracker/educlaw.db "INSERT INTO vocabulary (word, ipa, pos, meaning, collocations, example, topic, session_id) VALUES ('accommodation', '/əˌkɒməˈdeɪʃn/', 'noun', 'noi o, cho o', 'student accommodation, temporary accommodation', 'The university provides accommodation for first-year students.', 'Education', 1);"
+
+# Add material
+sqlite3 workspace/tracker/educlaw.db "INSERT INTO materials (title, type, reference, skill, phase) VALUES ('Cambridge IELTS 18', 'Book', 'Test 1, Listening Section 1-2 (p.4-8)', 'Listening', 1);"
+```
+
+#### Reading data (SELECT — for reports and cron jobs):
+```bash
+# Get tomorrow's session
+sqlite3 -header -column workspace/tracker/educlaw.db "SELECT * FROM sessions WHERE date = date('now', '+1 day') AND status = 'Planned';"
+
+# Get words to review (not mastered, reviewed < 3 times)
+sqlite3 -header -column workspace/tracker/educlaw.db "SELECT word, ipa, meaning, review_count FROM vocabulary WHERE mastered = 0 AND review_count < 3 ORDER BY review_count LIMIT 10;"
+
+# Weekly completion rate
+sqlite3 -header -column workspace/tracker/educlaw.db "SELECT COUNT(*) AS total, SUM(CASE WHEN status='Completed' THEN 1 ELSE 0 END) AS done, ROUND(100.0 * SUM(CASE WHEN status='Completed' THEN 1 ELSE 0 END) / MAX(COUNT(*),1), 1) AS pct FROM sessions WHERE date >= date('now', '-7 days');"
+
+# Check if event exists before deletion
+sqlite3 workspace/tracker/educlaw.db "SELECT id, status FROM sessions WHERE event_id = 'IELTS Phase 1 | Session 3 - Reading: Skim and Scan';"
+
+# Unused materials for next week
+sqlite3 -header -column workspace/tracker/educlaw.db "SELECT title, type, reference, skill FROM materials WHERE status = 'Not Started' ORDER BY phase, skill;"
+
+# Full vocab stats
+sqlite3 -header -column workspace/tracker/educlaw.db "SELECT COUNT(*) AS total, SUM(mastered) AS mastered, COUNT(DISTINCT topic) AS topics FROM vocabulary;"
+```
+
+### Workflow by step:
+1. **On FIRST RUN (Step 0):** Initialize database with schema. Do NOT skip or delay.
+2. **When creating calendar events (Step 2):** INSERT a row into `sessions` for EACH event with `event_id` matching the calendar event title.
+3. **After each study session:** UPDATE `sessions` (status → Completed, add score). INSERT new words into `vocabulary`.
+4. **During daily prep cron:** SELECT tomorrow's session from `sessions`. SELECT review words from `vocabulary` WHERE mastered=0.
+5. **During weekly report cron:** SELECT aggregated stats from `sessions`, `vocabulary`, `weekly_summaries`. INSERT/UPDATE `weekly_summaries` for the current week.
+6. **When searching materials:** SELECT from `materials` to avoid duplicates. UPDATE status after use.
+7. **Calendar conflict resolution:** UPDATE `sessions` status to Rescheduled/Deleted with notes.
+8. **When deleting events:** SELECT from `sessions` WHERE event_id = '...' — MUST exist. After deletion, UPDATE status to 'Deleted' with reason.
 
 ### Validation:
-- **Before creating events:** `sessions.json` MUST exist. If not → create it first.
-- **Before deleting events:** `eventId` MUST exist in `sessions.json`. If not → REFUSE to delete.
-- **Cron jobs:** Always read tracker files for real data. Do NOT generate generic messages.
-- **Cron jobs do NOT update calendar event descriptions.** Descriptions must be correct and unique at creation time. Cron only sends Discord messages.
+- **Before creating events:** Database MUST exist. If not → initialize with schema first.
+- **Before deleting events:** `event_id` MUST exist in `sessions` table. If not → REFUSE to delete.
+- **Cron jobs:** Always query the database for real data. Do NOT generate generic messages.
+- **Cron jobs do NOT update calendar event descriptions.** Descriptions must be correct and unique at creation time. Cron only sends Discord messages based on DB queries.
 
-### Optional: Google Sheet sync
-If user provides a Google Sheet link, store it in `workspace/IELTS_STUDY_PLAN.md` under a "Tracking" section. The local JSON files remain the primary source; the Google Sheet is a manual mirror.
+### Optional: Google Sheet mirror
+If user provides a Google Sheet link, store it in `workspace/IELTS_STUDY_PLAN.md` under a "Tracking" section. The SQLite database remains the primary source; the Google Sheet is a manual mirror.

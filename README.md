@@ -21,7 +21,7 @@ EduClaw is a comprehensive IELTS study management skill for OpenClaw. It automat
 - **Smart Scheduling** — Respects user's preferred time slots, handles conflicts interactively
 - **Dynamic Timezone** — Detects system timezone at runtime (never hardcoded)
 - **Cron Automation** — Daily prep briefs, weekly reports, material updates via Discord
-- **Google Sheet Tracker** — Central progress database with Session Log, Vocabulary Bank, Materials Library, Weekly Summary
+- **SQLite Progress Database** — Local `educlaw.db` with sessions, vocabulary, materials, and weekly summary tables — queryable, ACID-compliant, zero external dependencies
 - **Discord Notifications** — Calendar conflict alerts, study reminders, progress reports
 - **4-Month Roadmap** — Band 6.0 → 7.5+ structured in 4 phases (Foundation → Skill Building → Advanced → Exam Simulation)
 
@@ -38,7 +38,6 @@ EduClaw is a comprehensive IELTS study management skill for OpenClaw. It automat
 
 ### Optional
 
-- Google Sheets API access — for progress tracking spreadsheet
 - Web search enabled in OpenClaw — for material discovery
 
 ---
@@ -149,7 +148,7 @@ The agent asks your preferred study hours, available days, and blocked times. **
 
 ### Step 3: Documentation
 - Creates/updates `IELTS_STUDY_PLAN.md` with roadmap, vocabulary, resources, and progress tracker
-- Creates Google Sheet progress tracker (4 tabs)
+- Initializes SQLite progress database (`workspace/tracker/educlaw.db`) with 4 tables
 
 ---
 
@@ -191,18 +190,18 @@ openclaw cron add \
 
 ---
 
-## Progress Tracker (Local JSON Files)
+## Progress Tracker (SQLite Database)
 
-EduClaw creates local JSON files in `workspace/tracker/` as the single source of truth for progress:
+EduClaw uses a SQLite database at `workspace/tracker/educlaw.db` as the single source of truth for progress:
 
-| File | Tracks |
-|------|--------|
-| **sessions.json** | Date, phase, skill, topic, eventId, status, score, duration, weak areas |
-| **vocabulary.json** | Word, IPA, meaning, collocations, example, mastery status |
-| **materials.json** | Title, type, URL, skill, phase, status, rating |
-| **weekly-summary.json** | Sessions planned vs completed, vocab count, mock scores |
+| Table | Tracks |
+|-------|--------|
+| **sessions** | Date, phase, skill, topic, event_id, status, score, duration, weak areas |
+| **vocabulary** | Word, IPA, meaning, collocations, example, review count, mastery status |
+| **materials** | Title, type, URL, skill, phase, status, rating |
+| **weekly_summaries** | Sessions planned vs completed, vocab count, mock scores, adjustments |
 
-> **Why local files?** The agent doesn't have Google Sheets API access. Local JSON files can be read/written directly by the agent and cron jobs without external dependencies. Optionally, users can maintain a Google Sheet as a manual mirror.
+> **Why SQLite?** Supports complex queries (aggregations, joins, filters), is ACID-compliant, and works via `sqlite3` CLI or Python's built-in `sqlite3` module. No external API needed. Cron jobs query the DB directly for real-time reports.
 
 ---
 
@@ -231,7 +230,7 @@ Every calendar event contains a detailed, structured lesson plan:
 
 | Rule | Details |
 |------|---------|
-| ❌ Never delete untracked events | Only delete events with Event ID in Google Sheet, after user confirmation |
+| ❌ Never delete untracked events | Only delete events with event_id in SQLite database, after user confirmation |
 | ❌ Never auto-select time slots | Always asks first (Step 0) |
 | ❌ Never auto-resolve conflicts | Shows options, waits for user choice |
 | ❌ Never hardcode timezone | Detects from system at runtime |
@@ -252,6 +251,7 @@ educlaw-ielts-planner/
 ├── README_VI.md        # Vietnamese documentation
 ├── SKILL.md            # OpenClaw skill prompt (core logic)
 ├── WORKFLOW.md          # Step-by-step execution guide
+├── schema.sql          # SQLite database schema
 ├── _meta.json          # Skill metadata
 ├── LICENSE             # MIT License
 ├── CHANGELOG.md        # Version history

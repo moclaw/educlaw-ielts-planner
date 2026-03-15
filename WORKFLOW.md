@@ -443,7 +443,7 @@ openclaw cron add \
   --tz "<DETECTED_TZ>" \
   --channel discord \
   --announce \
-  --message "You are EduClaw. Prepare materials for TOMORROW. Steps: 1) Detect timezone via timedatectl. 2) Read workspace/IELTS_STUDY_PLAN.md for tomorrow's session. 3) Check gcalcli agenda for tomorrow — if conflicts with IELTS session, ALERT user with options (move time/move day/skip). 4) Web search 3-5 fresh materials for tomorrow's topic (exact URLs). 5) Review past 3 days calendar for weak areas. 6) Read Google Sheet progress tracker if available for completion history. 7) Deliver prep brief: skill, topic, lesson plan, 10 vocab words with IPA, material links, review words, tips. Clean text. Under 1800 chars." \
+  --message "You are EduClaw. Prepare materials for TOMORROW. Steps: 1) Detect timezone via timedatectl. 2) Query workspace/tracker/educlaw.db for tomorrow's session (SELECT * FROM sessions WHERE date=date('now','+1 day') AND status='Planned'). 3) Check gcalcli agenda for tomorrow — if conflicts with IELTS session, ALERT user with options (move time/move day/skip). 4) Web search 3-5 fresh materials for tomorrow's topic (exact URLs). 5) Review past 3 days from educlaw.db for weak areas. 6) Query vocabulary for review words (SELECT word,ipa,meaning FROM vocabulary WHERE mastered=0 ORDER BY review_count LIMIT 10). 7) Deliver prep brief: skill, topic, lesson plan, 10 vocab words with IPA, material links, review words, tips. Clean text. Under 1800 chars." \
   --model "google/gemini-2.5-flash" \
   --timeout-seconds 90
 ```
@@ -464,7 +464,7 @@ openclaw cron add \
 ```
 
 ### Weekly Progress Report (every Sunday 10:00)
-Comprehensive weekly summary with Google Sheet data.
+Comprehensive weekly summary with SQLite data.
 
 ```bash
 openclaw cron add \
@@ -473,7 +473,7 @@ openclaw cron add \
   --tz "<DETECTED_TZ>" \
   --channel discord \
   --announce \
-  --message "You are EduClaw. Generate weekly report. Steps: 1) Detect timezone. 2) Read workspace/IELTS_STUDY_PLAN.md for current Phase/Week. 3) Run gcalcli agenda for past 7 days to see completed sessions. 4) Read Google Sheet progress tracker for completion rates, vocab count, scores. 5) Check next week calendar for conflicts. 6) Report: Phase/Week, sessions done vs planned, completion rate, vocab learned, weak areas, mock scores, next week conflicts, adjustment suggestions. Clean text. Under 1500 chars." \
+  --message "You are EduClaw. Generate weekly report. Steps: 1) Detect timezone. 2) Read workspace/IELTS_STUDY_PLAN.md for current Phase/Week. 3) Run gcalcli agenda for past 7 days to see completed sessions. 4) Query workspace/tracker/educlaw.db for completion rates (SELECT count(*),sum(status='Completed') FROM sessions WHERE date>=date('now','-7 days')), vocab count (SELECT count(*),sum(mastered) FROM vocabulary). 5) Check next week calendar for conflicts. 6) Report: Phase/Week, sessions done vs planned, completion rate, vocab learned, weak areas, mock scores, next week conflicts, adjustment suggestions. INSERT/UPDATE weekly_summaries. Clean text. Under 1500 chars." \
   --model "google/gemini-2.5-flash" \
   --timeout-seconds 60
 ```
@@ -486,7 +486,7 @@ openclaw cron add \
   --tz "<DETECTED_TZ>" \
   --channel discord \
   --announce \
-  --message "You are EduClaw. Search materials for next week. 1) Read IELTS_STUDY_PLAN.md for next week's topics. 2) Check Google Sheet Materials Library for already-used resources. 3) Web search 5-10 fresh materials (YouTube, tests, articles) matching next week. 4) Check next week calendar for conflicts. Include exact URLs, which day it matches, why useful. Under 1500 chars." \
+  --message "You are EduClaw. Search materials for next week. 1) Read IELTS_STUDY_PLAN.md for next week's topics. 2) Query workspace/tracker/educlaw.db materials table for already-used resources (SELECT * FROM materials WHERE status != 'Not Started'). 3) Web search 5-10 fresh materials (YouTube, tests, articles) matching next week. 4) Check next week calendar for conflicts. Include exact URLs, which day it matches, why useful. Under 1500 chars." \
   --model "google/gemini-2.5-flash" \
   --timeout-seconds 60
 ```
@@ -505,26 +505,31 @@ openclaw cron run <job-name>   # immediate test run
 
 ---
 
-## Google Sheet Integration Workflow
+## SQLite Database Integration
 
-### First-time setup (during initial EduClaw run):
-1. Agent asks user: "Do you have an existing Google Sheet for IELTS tracking, or should I guide you to create one?"
-2. If user has a link → store in `workspace/IELTS_STUDY_PLAN.md`.
-3. If creating new → guide user to create Google Sheet with 4 tabs: Session Log, Vocabulary Bank, Materials Library, Weekly Summary.
-4. Store Google Sheet link for all future cron jobs and sessions.
+### First-time setup (during initial EduClaw run — Step 0):
+1. Agent creates the database: `sqlite3 workspace/tracker/educlaw.db < skills/educlaw-ielts-planner-1.0.0/schema.sql`
+2. Or initializes inline if schema.sql is unavailable (see SKILL.md for full CREATE TABLE statements).
+3. Database is stored at `workspace/tracker/educlaw.db`.
 
 ### During each session/cron:
-- **Read:** Check Session Log for history, Vocabulary Bank for review words, Materials Library for used resources.
-- **Write:** After each session, update Status (Completed/Missed), Score, Vocabulary added, Materials used.
-- **Weekly:** Calculate completion rates, generate summary in Weekly Summary tab.
+- **Read:** Query `sessions` for history, `vocabulary` for review words, `materials` for used resources.
+- **Write:** After each session, UPDATE status (Completed/Missed), score, notes. INSERT new vocabulary. INSERT new materials.
+- **Weekly:** Calculate completion rates via SQL aggregation, INSERT/UPDATE `weekly_summaries`.
 
-### Google Drive folder:
-```
-Google Drive/
-  IELTS_Study_Progress/
-    IELTS_Progress_Tracker.gsheet
-    Materials/
-    Writing_Samples/
-    Mock_Tests/
-    Vocabulary_Lists/
+### Example queries:
+```sql
+-- Tomorrow's session
+SELECT * FROM sessions WHERE date = date('now', '+1 day') AND status = 'Planned';
+
+-- Words to review
+SELECT word, ipa, meaning FROM vocabulary WHERE mastered = 0 ORDER BY review_count LIMIT 10;
+
+-- Weekly completion
+SELECT COUNT(*) AS total,
+       SUM(CASE WHEN status='Completed' THEN 1 ELSE 0 END) AS done
+FROM sessions WHERE date >= date('now', '-7 days');
+
+-- Unused materials
+SELECT title, reference, skill FROM materials WHERE status = 'Not Started';
 ```

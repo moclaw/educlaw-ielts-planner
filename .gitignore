@@ -22,3 +22,5 @@ logs/
 # Temp
 tmp/
 *.tmp
+*.db
+workspace/

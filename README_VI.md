@@ -21,7 +21,7 @@ EduClaw là skill quản lý học IELTS toàn diện cho OpenClaw. Tự động
 - **Lên lịch thông minh** — Tôn trọng khung giờ người dùng, xử lý xung đột tương tác
 - **Múi giờ động** — Phát hiện múi giờ hệ thống lúc chạy (không bao giờ hardcode)
 - **Cron tự động** — Chuẩn bị bài hằng ngày, báo cáo tuần, cập nhật tài liệu qua Discord
-- **Google Sheet** — Cơ sở dữ liệu tiến độ với 4 tab (Nhật ký buổi học, Ngân hàng từ vựng, Thư viện tài liệu, Tổng kết tuần)
+- **SQLite Database** — Cơ sở dữ liệu tiến độ local với 4 bảng (sessions, vocabulary, materials, weekly_summaries) — hỗ trợ query phức tạp, ACID-compliant
 - **Thông báo Discord** — Cảnh báo xung đột lịch, nhắc nhở học tập, báo cáo tiến độ
 - **Lộ trình 4 tháng** — Band 6.0 → 7.5+ chia 4 giai đoạn
 
@@ -38,7 +38,6 @@ EduClaw là skill quản lý học IELTS toàn diện cho OpenClaw. Tự động
 
 ### Tùy Chọn
 
-- Google Sheets API — theo dõi tiến độ qua bảng tính
 - Web search trong OpenClaw — tìm tài liệu tự động
 
 ---
@@ -138,7 +137,7 @@ Agent hỏi giờ học ưu tiên, ngày available, thời gian bận. **Không 
 
 ### Bước 3: Tài Liệu
 - Tạo/cập nhật `IELTS_STUDY_PLAN.md` với lộ trình, từ vựng, tài nguyên
-- Tạo Google Sheet theo dõi tiến độ (4 tab)
+- Khởi tạo SQLite database (`workspace/tracker/educlaw.db`) với 4 bảng
 
 ---
 
@@ -165,18 +164,18 @@ Agent hỏi giờ học ưu tiên, ngày available, thời gian bận. **Không 
 
 ---
 
-## Theo Dõi Tiến Độ (File JSON Local)
+## Theo Dõi Tiến Độ (SQLite Database)
 
-EduClaw tạo các file JSON local trong `workspace/tracker/` làm nguồn dữ liệu chính:
+EduClaw dùng SQLite database tại `workspace/tracker/educlaw.db` làm nguồn dữ liệu chính:
 
-| File | Theo dõi |
-|------|----------|
-| **sessions.json** | Ngày, giai đoạn, kỹ năng, chủ đề, eventId, trạng thái, điểm |
-| **vocabulary.json** | Từ, IPA, nghĩa, collocations, ví dụ, trạng thái |
-| **materials.json** | Tên, loại, URL, kỹ năng, giai đoạn, đánh giá |
-| **weekly-summary.json** | Buổi học hoàn thành, từ vựng, điểm mock test |
+| Bảng | Theo dõi |
+|-------|----------|
+| **sessions** | Ngày, giai đoạn, kỹ năng, chủ đề, event_id, trạng thái, điểm |
+| **vocabulary** | Từ, IPA, nghĩa, collocations, ví dụ, số lần ôn, trạng thái |
+| **materials** | Tên, loại, URL, kỹ năng, giai đoạn, đánh giá |
+| **weekly_summaries** | Buổi học hoàn thành, từ vựng, điểm mock test |
 
-> **Tại sao dùng file local?** Agent không có Google Sheets API. File JSON local đọc/ghi trực tiếp mà không cần phụ thuộc ngoài. Người dùng có thể tự duy trì Google Sheet song song nếu muốn.
+> **Tại sao dùng SQLite?** Hỗ trợ query phức tạp (aggregation, join, filter), ACID-compliant, dùng `sqlite3` CLI hoặc Python built-in. Không cần API bên ngoài. Cron jobs query trực tiếp từ DB.
 
 ---
 
@@ -184,7 +183,7 @@ EduClaw tạo các file JSON local trong `workspace/tracker/` làm nguồn dữ 
 
 | Quy tắc | Chi tiết |
 |---------|----------|
-| ❌ Không xóa event không có trong Sheet | Chỉ xóa event có Event ID trong Google Sheet, sau khi user xác nhận |
+| ❌ Không xóa event không có trong DB | Chỉ xóa event có event_id trong SQLite database, sau khi user xác nhận |
 | ❌ Không tự chọn giờ | Luôn hỏi trước (Bước 0) |
 | ❌ Không tự giải quyết xung đột | Hiện lựa chọn, chờ phản hồi |
 | ❌ Không hardcode múi giờ | Phát hiện từ hệ thống lúc chạy |
@@ -204,6 +203,7 @@ educlaw-ielts-planner/
 ├── README_VI.md        # Tài liệu tiếng Việt (file này)
 ├── SKILL.md            # Prompt skill OpenClaw (logic chính)
 ├── WORKFLOW.md          # Hướng dẫn thực thi từng bước
+├── schema.sql          # Schema SQLite database
 ├── _meta.json          # Metadata skill
 ├── LICENSE             # Giấy phép MIT
 ├── CHANGELOG.md        # Lịch sử phiên bản
