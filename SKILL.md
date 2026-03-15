@@ -206,7 +206,7 @@ gcalcli --nocolor add --noprompt \
 - Confirm event time is within `preferred_slots`.
 - Confirm timezone is Asia/Ho_Chi_Minh.
 - If time drifts outside window → STOP, ask user.
-- **Event deletion:** ONLY allowed for IELTS events created by EduClaw that have a matching Event ID in the Google Sheet Session Log. MUST ask user confirmation before deleting. Use: `yes | gcalcli delete "IELTS Phase X | Session Y"` (match by title). After deletion, update Google Sheet Session Log status to "Deleted" with reason.
+- **Event deletion:** ONLY allowed for IELTS events created by EduClaw that have a matching eventId in `workspace/tracker/sessions.json`. MUST ask user confirmation before deleting. Use: `yes | gcalcli delete "IELTS Phase X | Session Y"` (match by title). After deletion, update sessions.json status to "Deleted" with reason.
 
 **2.5. Report results** (in `user_lang`)
 - Total events created, date/time list, conflicts resolved.
@@ -301,7 +301,7 @@ Goal: Stabilize 7.0-7.5, exam-ready.
 ## GUARDRAILS — MANDATORY
 
 ### 🚫 NEVER:
-1. **Delete Calendar events NOT tracked in Google Sheet** → NEVER delete events that EduClaw did not create. Only events with a matching Event ID in the Google Sheet Session Log may be deleted, and ONLY after user confirmation.
+1. **Delete Calendar events NOT tracked in sessions.json** → NEVER delete events that EduClaw did not create. Only events with a matching eventId in `workspace/tracker/sessions.json` may be deleted, and ONLY after user confirmation.
 2. **Auto-select time slots** → MUST ask user first (Step 0).
 3. **Place events outside chosen window** → ASK if blocked, don't auto-move.
 4. **Delete files/emails** → Only CREATE and EDIT your own files.
@@ -411,9 +411,9 @@ SELF-CHECK (complete after session):
 [ ] Reviewed 5 words from previous session
 [ ] Noted 2-3 weak points to address next session
 [ ] Updated progress tracker in IELTS_STUDY_PLAN.md
-[ ] Updated Google Sheet: Session Log (status, score, notes)
-[ ] Updated Google Sheet: Vocabulary Bank (new words added)
-[ ] Updated Google Sheet: Materials Library (status of used resources)
+[ ] Updated tracker/sessions.json (status, score, notes)
+[ ] Updated tracker/vocabulary.json (new words added)
+[ ] Updated tracker/materials.json (status of used resources)
 ```
 
 ### CRITICAL — EACH EVENT DESCRIPTION MUST BE 100% UNIQUE
@@ -512,7 +512,7 @@ openclaw cron add \
   --tz "$(timedatectl show --property=Timezone --value)" \
   --channel discord \
   --announce \
-  --message "You are EduClaw daily prep assistant. Silently check tomorrow IELTS session from gcalcli and Google Sheet Session Log. Then send a clean prep message: tomorrow session topic, key vocabulary to preview (10 words with IPA), recommended materials with URLs, and what to review from last session. End with a motivational note. Never show internal steps or tool calls." \
+  --message "You are EduClaw daily prep assistant. Silently check tomorrow IELTS session from gcalcli and workspace/tracker/sessions.json. Read workspace/tracker/vocabulary.json for review words. Then send a clean prep message: tomorrow session topic, key vocabulary to preview (10 words with IPA), recommended materials with URLs, and what to review from last session. End with a motivational note. Never show internal steps or tool calls." \
   --model "google/gemini-2.5-flash"
 ```
 
@@ -536,7 +536,7 @@ openclaw cron add \
   --tz "$(timedatectl show --property=Timezone --value)" \
   --channel discord \
   --announce \
-  --message "You are EduClaw weekly reporter. Silently gather data from gcalcli (past week sessions) and Google Sheet (Session Log, Vocabulary Bank). Then present a clean weekly summary: sessions completed vs planned, skills practiced, vocabulary count, areas needing work, and suggestions for next week. Ask user to confirm or adjust next week plan. Never show internal reasoning or data-gathering steps." \
+  --message "You are EduClaw weekly reporter. Silently gather data from gcalcli (past week sessions) and workspace/tracker/ files (sessions.json, vocabulary.json, weekly-summary.json). Then present a clean weekly summary: sessions completed vs planned, skills practiced, vocabulary count, areas needing work, and suggestions for next week. Update weekly-summary.json. Ask user to confirm or adjust next week plan. Never show internal reasoning or data-gathering steps." \
   --model "google/gemini-2.5-flash"
 ```
 
@@ -548,7 +548,7 @@ openclaw cron add \
   --tz "$(timedatectl show --property=Timezone --value)" \
   --channel discord \
   --announce \
-  --message "You are EduClaw material curator. Silently check Google Sheet Materials Library and next week plan from gcalcli. Then present new free materials found: title, URL, skill, level. Ask user which to add to the library. Wait for reply before updating. Never show search process or internal steps." \
+  --message "You are EduClaw material curator. Silently check workspace/tracker/materials.json and next week plan from gcalcli. Then present new free materials found: title, URL, skill, level. Ask user which to add to the library. Wait for reply before updating materials.json. Never show search process or internal steps." \
   --model "google/gemini-2.5-flash"
 ```
 
@@ -572,7 +572,7 @@ openclaw cron add \
 
 ### Mid-course plan change
 - Ask what to adjust.
-- **If user wants to replace events:** Delete old IELTS events (ONLY those tracked in Google Sheet with Event ID) after user confirmation, then create updated ones. Update Session Log status to "Replaced" with notes.
+- **If user wants to replace events:** Delete old IELTS events (ONLY those tracked in sessions.json with eventId) after user confirmation, then create updated ones. Update sessions.json status to "Replaced" with notes.
 - **If user wants to add sessions:** Create new events alongside existing ones.
 
 ### Missed sessions
@@ -618,100 +618,122 @@ Reply with 1, 2, or 3.
 - NEVER silently reschedule or skip a study session.
 - NEVER auto-resolve calendar conflicts — ALWAYS ask user via Discord.
 - If user doesn't respond within 2 hours → send a follow-up reminder.
-- Log all conflicts and resolutions in Google Sheet progress tracker.
+- Log all conflicts and resolutions in progress tracker files.
 
 ---
 
-## GOOGLE SHEET PROGRESS TRACKER
+## PROGRESS TRACKER (Local JSON Files — Single Source of Truth)
 
-**Use a Google Sheet as the central database for tracking study progress, materials, and completion status.**
+**The agent MUST use local JSON files in the workspace as the progress database. These files are the single source of truth for all tracking.**
 
-### Sheet setup (agent creates this on first run):
-Use Google Sheets API or `gsheet` tool if available. If not, create via web search for "Google Sheets API" approach or ask user to create manually and share the link.
+**Why local files (not Google Sheets):** The agent does not have Google Sheets API access. Local JSON files can be read/written directly by the agent and all cron jobs without external dependencies.
 
-**Preferred method:** Use `gcalcli` alongside a Google Sheet accessed via the Google Sheets API (same Google account as Calendar).
+### File setup (agent creates on FIRST RUN — Step 0):
 
-### Sheet structure — "IELTS Progress Tracker":
+On FIRST RUN, immediately after asking study hours and BEFORE creating calendar events, create ALL 4 tracker files:
 
-**Tab 1: "Session Log"**
-| Column | Description |
-|--------|-------------|
-| A: Date | YYYY-MM-DD |
-| B: Phase | Phase 1/2/3/4 |
-| C: Session # | Session number |
-| D: Skill | Listening/Reading/Writing/Speaking |
-| E: Topic | Specific topic covered |
-| F: Event ID | Calendar event title (used as identifier for delete/update operations) |
-| G: Status | Planned / Completed / Missed / Rescheduled / Deleted / Replaced |
-| H: Score | Test score if applicable (e.g., 7/10) |
-| I: Duration (min) | Actual study duration |
-| J: Vocabulary Count | Number of new words learned |
-| K: Weak Areas | Notes on weak points identified |
-| L: Materials Used | Book/URL references |
-| M: Notes | Free-form notes |
-
-**Tab 2: "Vocabulary Bank"**
-| Column | Description |
-|--------|-------------|
-| A: Word | English word |
-| B: IPA | Pronunciation |
-| C: Part of Speech | noun/verb/adj/adv |
-| D: Meaning | In user_lang |
-| E: Collocations | Common word pairs |
-| F: Example Sentence | IELTS context |
-| G: Topic | Education/Environment/etc. |
-| H: Date Added | YYYY-MM-DD |
-| I: Review Count | Times reviewed |
-| J: Mastered | Yes/No |
-
-**Tab 3: "Materials Library"**
-| Column | Description |
-|--------|-------------|
-| A: Title | Resource name |
-| B: Type | Book/Website/Video/App |
-| C: URL/Reference | Link or page reference |
-| D: Skill | Which skill it covers |
-| E: Phase | Which phase it belongs to |
-| F: Status | Not Started / In Progress / Completed |
-| G: Rating | 1-5 stars after use |
-| H: Notes | User feedback |
-
-**Tab 4: "Weekly Summary"**
-| Column | Description |
-|--------|-------------|
-| A: Week # | Week number (1-16) |
-| B: Phase | Current phase |
-| C: Sessions Planned | Count |
-| D: Sessions Completed | Count |
-| E: Completion Rate | % |
-| F: Vocab Learned | Count |
-| G: Mock Score | If applicable |
-| H: Weak Focus | Area needing work |
-| I: Adjustments | Changes made |
-
-### How the agent uses the Google Sheet:
-1. **After each study session:** Update Session Log (mark Completed/Missed, add score).
-2. **During daily prep cron:** Read Session Log to check history, read Vocabulary Bank for review words.
-3. **During weekly report cron:** Read all tabs, calculate completion rates, generate summary.
-4. **When searching materials:** Check Materials Library to avoid duplicates, update Status after use.
-5. **Calendar conflict resolution:** Log reschedules/skips in Session Log with notes.
-
-### Google Drive folder structure:
-```
-Google Drive/
-  IELTS_Study_Progress/
-    IELTS_Progress_Tracker.gsheet     (main tracking spreadsheet)
-    Materials/                         (downloaded PDFs, practice tests)
-    Writing_Samples/                   (user's essay drafts)
-    Mock_Tests/                        (mock test results & analysis)
-    Vocabulary_Lists/                  (exported flashcard sets)
+```bash
+mkdir -p workspace/tracker
 ```
 
-### Agent instructions for Google Sheet:
-- On FIRST RUN (Step 0): **MUST create the Google Sheet IMMEDIATELY** — do not delay to a later session. After asking study hours, create the sheet with all 4 tabs and the Google Drive folder structure. Send the sheet link to Discord so user can bookmark it.
-- **If agent cannot create via API:** Provide user a step-by-step guide and a pre-formatted template link. Do NOT skip this step.
-- **If user has Google Sheet link:** Store in `workspace/IELTS_STUDY_PLAN.md` under a "Tracking" section.
-- On EVERY session/cron: Read from and write to the Google Sheet to maintain accurate progress.
-- **Google Sheet is the single source of truth** for progress — not just IELTS_STUDY_PLAN.md.
-- **Daily prep cron (23:00):** Must READ the Google Sheet to get actual session history, vocabulary learned so far, and weak areas — then use that data to generate the prep message. Do NOT generate generic prep messages.
+### File 1: `workspace/tracker/sessions.json`
+```json
+{
+  "sessions": [
+    {
+      "date": "2026-03-16",
+      "phase": 1,
+      "session": 1,
+      "skill": "Listening",
+      "topic": "Section 1-2 Gap Fill",
+      "eventId": "IELTS Phase 1 | Session 1 - Listening: Section 1-2 Gap Fill",
+      "status": "Planned",
+      "score": null,
+      "durationMin": 90,
+      "vocabCount": 10,
+      "weakAreas": "",
+      "materialsUsed": "",
+      "notes": ""
+    }
+  ]
+}
+```
+- **eventId**: Calendar event title — used as identifier for delete/update operations.
+- **status**: `Planned` / `Completed` / `Missed` / `Rescheduled` / `Deleted` / `Replaced`.
+- **MUST add an entry for EVERY event created.** This is the reference for which events the agent is allowed to delete.
+
+### File 2: `workspace/tracker/vocabulary.json`
+```json
+{
+  "words": [
+    {
+      "word": "accommodation",
+      "ipa": "/əˌkɒməˈdeɪʃn/",
+      "pos": "noun",
+      "meaning": "noi o, cho o",
+      "collocations": "student accommodation, temporary accommodation",
+      "example": "The university provides accommodation for first-year students.",
+      "topic": "Education",
+      "dateAdded": "2026-03-16",
+      "reviewCount": 0,
+      "mastered": false
+    }
+  ]
+}
+```
+
+### File 3: `workspace/tracker/materials.json`
+```json
+{
+  "materials": [
+    {
+      "title": "Cambridge IELTS 18",
+      "type": "Book",
+      "reference": "Test 1, Listening Section 1-2 (p.4-8)",
+      "skill": "Listening",
+      "phase": 1,
+      "status": "Not Started",
+      "rating": null,
+      "notes": ""
+    }
+  ]
+}
+```
+
+### File 4: `workspace/tracker/weekly-summary.json`
+```json
+{
+  "weeks": [
+    {
+      "week": 1,
+      "phase": 1,
+      "sessionsPlanned": 12,
+      "sessionsCompleted": 0,
+      "completionRate": 0,
+      "vocabLearned": 0,
+      "mockScore": null,
+      "weakFocus": "",
+      "adjustments": ""
+    }
+  ]
+}
+```
+
+### How the agent uses the tracker files:
+1. **On FIRST RUN (Step 0):** Create all 4 JSON files IMMEDIATELY. Do NOT skip or delay.
+2. **When creating calendar events (Step 2):** Add an entry to `sessions.json` for EACH event with `eventId` matching the calendar event title.
+3. **After each study session:** Update `sessions.json` (status → Completed, add score), add new words to `vocabulary.json`.
+4. **During daily prep cron:** Read `sessions.json` for history, `vocabulary.json` for review words.
+5. **During weekly report cron:** Read all 4 files, calculate completion rates, update `weekly-summary.json`.
+6. **When searching materials:** Check `materials.json` to avoid duplicates, update status after use.
+7. **Calendar conflict resolution:** Update `sessions.json` status to Rescheduled/Deleted with notes.
+8. **When deleting events:** Verify `eventId` exists in `sessions.json` BEFORE deleting. Update status to Deleted.
+
+### Validation:
+- **Before creating events:** `sessions.json` MUST exist. If not → create it first.
+- **Before deleting events:** `eventId` MUST exist in `sessions.json`. If not → REFUSE to delete.
+- **Cron jobs:** Always read tracker files for real data. Do NOT generate generic messages.
 - **Cron jobs do NOT update calendar event descriptions.** Descriptions must be correct and unique at creation time. Cron only sends Discord messages.
+
+### Optional: Google Sheet sync
+If user provides a Google Sheet link, store it in `workspace/IELTS_STUDY_PLAN.md` under a "Tracking" section. The local JSON files remain the primary source; the Google Sheet is a manual mirror.

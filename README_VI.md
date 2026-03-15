@@ -165,14 +165,18 @@ Agent hỏi giờ học ưu tiên, ngày available, thời gian bận. **Không 
 
 ---
 
-## Google Sheet Theo Dõi Tiến Độ
+## Theo Dõi Tiến Độ (File JSON Local)
 
-| Tab | Theo dõi |
-|-----|----------|
-| **Session Log** | Ngày, giai đoạn, kỹ năng, chủ đề, trạng thái, điểm |
-| **Vocabulary Bank** | Từ, IPA, nghĩa, collocations, ví dụ, trạng thái |
-| **Materials Library** | Tên, loại, URL, kỹ năng, giai đoạn, đánh giá |
-| **Weekly Summary** | Buổi học hoàn thành, từ vựng, điểm mock test |
+EduClaw tạo các file JSON local trong `workspace/tracker/` làm nguồn dữ liệu chính:
+
+| File | Theo dõi |
+|------|----------|
+| **sessions.json** | Ngày, giai đoạn, kỹ năng, chủ đề, eventId, trạng thái, điểm |
+| **vocabulary.json** | Từ, IPA, nghĩa, collocations, ví dụ, trạng thái |
+| **materials.json** | Tên, loại, URL, kỹ năng, giai đoạn, đánh giá |
+| **weekly-summary.json** | Buổi học hoàn thành, từ vựng, điểm mock test |
+
+> **Tại sao dùng file local?** Agent không có Google Sheets API. File JSON local đọc/ghi trực tiếp mà không cần phụ thuộc ngoài. Người dùng có thể tự duy trì Google Sheet song song nếu muốn.
 
 ---
 

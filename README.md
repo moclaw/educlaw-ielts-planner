@@ -191,16 +191,18 @@ openclaw cron add \
 
 ---
 
-## Google Sheet Progress Tracker
+## Progress Tracker (Local JSON Files)
 
-EduClaw creates a Google Sheet with 4 tabs as a central progress database:
+EduClaw creates local JSON files in `workspace/tracker/` as the single source of truth for progress:
 
-| Tab | Tracks |
-|-----|--------|
-| **Session Log** | Date, phase, skill, topic, status, score, duration, weak areas |
-| **Vocabulary Bank** | Word, IPA, meaning, collocations, example, mastery status |
-| **Materials Library** | Title, type, URL, skill, phase, status, rating |
-| **Weekly Summary** | Sessions planned vs completed, vocab count, mock scores |
+| File | Tracks |
+|------|--------|
+| **sessions.json** | Date, phase, skill, topic, eventId, status, score, duration, weak areas |
+| **vocabulary.json** | Word, IPA, meaning, collocations, example, mastery status |
+| **materials.json** | Title, type, URL, skill, phase, status, rating |
+| **weekly-summary.json** | Sessions planned vs completed, vocab count, mock scores |
+
+> **Why local files?** The agent doesn't have Google Sheets API access. Local JSON files can be read/written directly by the agent and cron jobs without external dependencies. Optionally, users can maintain a Google Sheet as a manual mirror.
 
 ---
 
