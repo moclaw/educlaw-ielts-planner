@@ -170,11 +170,11 @@ EduClaw supports automated cron jobs delivered to Discord:
 
 | Job | Schedule | Purpose |
 |-----|----------|---------|
-| `ielts-daily-prep` | 2h before study (Mon–Sat) | Material search, vocab review, lesson prep |
+| `ielts-calendar-watcher` | Every 2 hours | Detect calendar conflicts with study sessions |
+| `ielts-daily-prep` | 23:00 Sun–Fri | Prep brief for next day's session (vocab, materials, review) |
+| `ielts-meeting-conflict-check` | 08:00 Mon–Sat | Morning conflict check for today's session |
 | `ielts-weekly-report` | Sunday 10:00 | Progress summary, completion rates, adjustments |
 | `ielts-weekly-material-update` | Saturday 14:00 | Fresh materials for next week's topics |
-| `calendar-watcher` | Every 2 hours | Detect calendar conflicts with study sessions |
-| `meeting-conflict-check` | Daily 08:00 (Mon–Sat) | Morning conflict check for today's session |
 
 ### Setup Example
 

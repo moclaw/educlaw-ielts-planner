@@ -157,11 +157,11 @@ Agent hỏi giờ học ưu tiên, ngày available, thời gian bận. **Không 
 
 | Job | Lịch | Mục đích |
 |-----|------|----------|
-| `ielts-daily-prep` | 2h trước giờ học (T2–T7) | Tìm tài liệu, ôn từ vựng, chuẩn bị bài |
+| `ielts-calendar-watcher` | Mỗi 2 giờ | Phát hiện xung đột lịch với buổi học |
+| `ielts-daily-prep` | 23:00 CN–T6 | Chuẩn bị bài cho ngày mai (từ vựng, tài liệu, ôn tập) |
+| `ielts-meeting-conflict-check` | 08:00 T2–T7 | Kiểm tra xung đột sáng nay |
 | `ielts-weekly-report` | Chủ nhật 10:00 | Tổng kết tiến độ tuần |
 | `ielts-weekly-material-update` | Thứ 7, 14:00 | Tài liệu mới cho tuần tới |
-| `calendar-watcher` | Mỗi 2 giờ | Phát hiện xung đột lịch |
-| `meeting-conflict-check` | 08:00 hằng ngày (T2–T7) | Kiểm tra xung đột sáng nay |
 
 ---
 

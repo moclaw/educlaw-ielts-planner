@@ -489,65 +489,80 @@ openclaw agent --message "Show IELTS progress"
 openclaw agent --message "Schedule IELTS next 2 weeks"
 ```
 
-### Cron (Automated Material Search + Reminders)
-EduClaw supports automated study prep, material search, and reminders delivered to Discord.
+### Cron (Automated Study Support — 5 Jobs)
+EduClaw uses 5 automated cron jobs delivered to Discord. No daily reminder needed — Google Calendar already provides a 15-min popup.
 
-**Daily material search & study prep** (2 hours before study):
+**1. Calendar watcher** (every 2 hours, all days):
+```bash
+openclaw cron add \
+  --name "ielts-calendar-watcher" \
+  --cron "0 */2 * * *" \
+  --tz "$(timedatectl show --property=Timezone --value)" \
+  --channel discord \
+  --announce \
+  --message "You are EduClaw. Silently detect system timezone and check gcalcli agenda for next 48h. If any non-IELTS event overlaps with an IELTS study session, send ONE clean alert: the conflict details and 3 options — (1) move study to different time today, (2) move to next available day, (3) skip and add to catch-up. Wait for user reply. If no conflicts, stay completely silent — send nothing. Never show your reasoning steps or internal process." \
+  --model "google/gemini-2.5-flash"
+```
+
+**2. Daily study prep** (23:00 Sun–Fri, prepares for next morning):
 ```bash
 openclaw cron add \
   --name "ielts-daily-prep" \
-  --cron "0 <HOUR_MINUS_2> * * 1-6" \
-  --tz "Asia/Ho_Chi_Minh" \
+  --cron "0 23 * * 0-5" \
+  --tz "$(timedatectl show --property=Timezone --value)" \
   --channel discord \
   --announce \
-  --message "You are EduClaw. 1) Read workspace/IELTS_STUDY_PLAN.md for today's session. 2) Check gcalcli agenda for today. 3) Web search 2-3 fresh materials for today's topic (exact URLs). 4) Review past 3 days calendar for weak areas. 5) Deliver prep brief: skill, topic, lesson plan, 5 vocab, 3 material links, 3 review words, 1 tip. Clean text, no emoji. Under 1500 chars." \
+  --message "You are EduClaw daily prep assistant. Silently check tomorrow IELTS session from gcalcli and Google Sheet Session Log. Then send a clean prep message: tomorrow session topic, key vocabulary to preview (10 words with IPA), recommended materials with URLs, and what to review from last session. End with a motivational note. Never show internal steps or tool calls." \
   --model "google/gemini-2.5-flash"
 ```
 
-**Daily study reminder** (30 min before study):
+**3. Morning conflict check** (08:00 Mon–Sat):
 ```bash
 openclaw cron add \
-  --name "ielts-daily-reminder" \
-  --cron "<30_MIN_BEFORE> * * 1-6" \
-  --tz "Asia/Ho_Chi_Minh" \
+  --name "ielts-meeting-conflict-check" \
+  --cron "0 8 * * 1-6" \
+  --tz "$(timedatectl show --property=Timezone --value)" \
   --channel discord \
   --announce \
-  --message "Quick IELTS reminder: check Google Calendar for today's session. State skill, topic, duration, top 3 vocab. Under 300 chars." \
+  --message "You are EduClaw morning checker. Silently check today full calendar via gcalcli for conflicts with IELTS sessions. If conflict exists, send a clean alert with conflict details and ask: (1) move study to different time today, (2) move to tomorrow, (3) skip and catch up later. Wait for reply. If no conflicts, send a short confirmation: study session is clear for today. Never expose reasoning steps." \
   --model "google/gemini-2.5-flash"
 ```
 
-**Weekly progress report** (every Sunday):
+**4. Weekly progress report** (Sunday 10:00):
 ```bash
 openclaw cron add \
   --name "ielts-weekly-report" \
   --cron "0 10 * * 0" \
-  --tz "Asia/Ho_Chi_Minh" \
+  --tz "$(timedatectl show --property=Timezone --value)" \
   --channel discord \
   --announce \
-  --message "Read workspace/IELTS_STUDY_PLAN.md + review this week's calendar. Summarize: Phase/Week, sessions done vs planned, vocab learned, weak areas, mock scores. Suggest adjustments. Under 1000 chars."
+  --message "You are EduClaw weekly reporter. Silently gather data from gcalcli (past week sessions) and Google Sheet (Session Log, Vocabulary Bank). Then present a clean weekly summary: sessions completed vs planned, skills practiced, vocabulary count, areas needing work, and suggestions for next week. Ask user to confirm or adjust next week plan. Never show internal reasoning or data-gathering steps." \
+  --model "google/gemini-2.5-flash"
 ```
 
-**Weekly material update** (every Saturday afternoon):
+**5. Weekly material update** (Saturday 14:00):
 ```bash
 openclaw cron add \
   --name "ielts-weekly-material-update" \
   --cron "0 14 * * 6" \
-  --tz "Asia/Ho_Chi_Minh" \
+  --tz "$(timedatectl show --property=Timezone --value)" \
   --channel discord \
   --announce \
-  --message "Read workspace/IELTS_STUDY_PLAN.md for next week's topics. Web search 5-10 fresh materials (YouTube, tests, articles) matching next week. Include exact URLs, which day it matches, why useful. Under 1500 chars." \
+  --message "You are EduClaw material curator. Silently check Google Sheet Materials Library and next week plan from gcalcli. Then present new free materials found: title, URL, skill, level. Ask user which to add to the library. Wait for reply before updating. Never show search process or internal steps." \
   --model "google/gemini-2.5-flash"
 ```
 
 **Notes:**
-- Replace `<HOUR_MINUS_2>` with 2h before study (study at 20:00 → 18).
-- Replace `<30_MIN_BEFORE>` with cron for 30 min before (study at 20:00 → `30 19`).
+- All jobs use dynamic timezone detection: `$(timedatectl show --property=Timezone --value)`.
+- `ielts-calendar-watcher` stays silent when no conflicts found.
+- `ielts-daily-prep` runs at 23:00 the night before (Sun–Fri) to prep for the next day's session.
+- No separate daily reminder — Google Calendar 15-min popup + morning conflict check are sufficient.
 
 ### Channel-Aware Output Rules
 1. **Discord:** Split long messages (>2000 chars). Use code blocks for tables. Bold headers.
 2. **TUI/CLI:** Full Markdown with tables. No length limit.
 3. **Cron daily prep:** Detailed with materials/vocab/history (< 1500 chars).
-4. **Cron reminders:** Concise quick reminder (< 300 chars).
+4. **Cron conflict alerts:** Clean alert with options (< 500 chars).
 5. **All channels:** Always include actionable next step (e.g., "Type Approve" / "Reply to adjust").
 6. **No thinking in messages:** NEVER show internal steps, reasoning process, numbered tool-call sequences, or "detecting timezone..." style progress. Run all checks silently, then present only the final clean result. If an action requires user input, jump straight to the question.
 
