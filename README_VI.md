@@ -180,7 +180,7 @@ Agent hỏi giờ học ưu tiên, ngày available, thời gian bận. **Không 
 
 | Quy tắc | Chi tiết |
 |---------|----------|
-| ❌ Không xóa sự kiện hiện có | Hỏi người dùng khi xung đột |
+| ❌ Không xóa event không có trong Sheet | Chỉ xóa event có Event ID trong Google Sheet, sau khi user xác nhận |
 | ❌ Không tự chọn giờ | Luôn hỏi trước (Bước 0) |
 | ❌ Không tự giải quyết xung đột | Hiện lựa chọn, chờ phản hồi |
 | ❌ Không hardcode múi giờ | Phát hiện từ hệ thống lúc chạy |

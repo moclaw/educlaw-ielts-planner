@@ -229,7 +229,7 @@ Every calendar event contains a detailed, structured lesson plan:
 
 | Rule | Details |
 |------|---------|
-| ❌ Never delete existing events | Asks user on conflict |
+| ❌ Never delete untracked events | Only delete events with Event ID in Google Sheet, after user confirmation |
 | ❌ Never auto-select time slots | Always asks first (Step 0) |
 | ❌ Never auto-resolve conflicts | Shows options, waits for user choice |
 | ❌ Never hardcode timezone | Detects from system at runtime |

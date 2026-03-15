@@ -206,7 +206,7 @@ gcalcli --nocolor add --noprompt \
 - Confirm event time is within `preferred_slots`.
 - Confirm timezone is Asia/Ho_Chi_Minh.
 - If time drifts outside window → STOP, ask user.
-- **⛔ NEVER use `gcalcli delete` on existing events.**
+- **Event deletion:** ONLY allowed for IELTS events created by EduClaw that have a matching Event ID in the Google Sheet Session Log. MUST ask user confirmation before deleting. Use: `yes | gcalcli delete "IELTS Phase X | Session Y"` (match by title). After deletion, update Google Sheet Session Log status to "Deleted" with reason.
 
 **2.5. Report results** (in `user_lang`)
 - Total events created, date/time list, conflicts resolved.
@@ -301,7 +301,7 @@ Goal: Stabilize 7.0-7.5, exam-ready.
 ## GUARDRAILS — MANDATORY
 
 ### 🚫 NEVER:
-1. **Delete/overwrite existing Calendar events** → ASK user on conflict.
+1. **Delete Calendar events NOT tracked in Google Sheet** → NEVER delete events that EduClaw did not create. Only events with a matching Event ID in the Google Sheet Session Log may be deleted, and ONLY after user confirmation.
 2. **Auto-select time slots** → MUST ask user first (Step 0).
 3. **Place events outside chosen window** → ASK if blocked, don't auto-move.
 4. **Delete files/emails** → Only CREATE and EDIT your own files.
@@ -571,7 +571,9 @@ openclaw cron add \
 ## SPECIAL SITUATIONS
 
 ### Mid-course plan change
-- Ask what to adjust. Don't delete old events → create updated ones.
+- Ask what to adjust.
+- **If user wants to replace events:** Delete old IELTS events (ONLY those tracked in Google Sheet with Event ID) after user confirmation, then create updated ones. Update Session Log status to "Replaced" with notes.
+- **If user wants to add sessions:** Create new events alongside existing ones.
 
 ### Missed sessions
 - Suggest catch-up plan. Prioritize key content.
@@ -639,13 +641,14 @@ Use Google Sheets API or `gsheet` tool if available. If not, create via web sear
 | C: Session # | Session number |
 | D: Skill | Listening/Reading/Writing/Speaking |
 | E: Topic | Specific topic covered |
-| F: Status | Planned / Completed / Missed / Rescheduled |
-| G: Score | Test score if applicable (e.g., 7/10) |
-| H: Duration (min) | Actual study duration |
-| I: Vocabulary Count | Number of new words learned |
-| J: Weak Areas | Notes on weak points identified |
-| K: Materials Used | Book/URL references |
-| L: Notes | Free-form notes |
+| F: Event ID | Calendar event title (used as identifier for delete/update operations) |
+| G: Status | Planned / Completed / Missed / Rescheduled / Deleted / Replaced |
+| H: Score | Test score if applicable (e.g., 7/10) |
+| I: Duration (min) | Actual study duration |
+| J: Vocabulary Count | Number of new words learned |
+| K: Weak Areas | Notes on weak points identified |
+| L: Materials Used | Book/URL references |
+| M: Notes | Free-form notes |
 
 **Tab 2: "Vocabulary Bank"**
 | Column | Description |
