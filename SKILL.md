@@ -118,6 +118,40 @@ After receiving the answer:
 - **Carry forward:** any vocabulary words marked as "needs review" from past sessions.
 - **Adjust plan:** if user is behind schedule or ahead, adapt accordingly.
 
+**1.2.1. §DB-PRE-CHECK — Query SQLite BEFORE planning (MANDATORY)**
+
+Before generating ANY new sessions or vocabulary, you MUST query `educlaw.db`:
+
+```bash
+# 1. Get all existing sessions — know what was already planned/completed
+sqlite3 -header -column workspace/tracker/educlaw.db \
+  "SELECT date, phase, session, skill, topic, status FROM sessions ORDER BY date DESC LIMIT 30;"
+
+# 2. Get ALL vocabulary words already in the DB — for dedup
+sqlite3 workspace/tracker/educlaw.db \
+  "SELECT word FROM vocabulary;"
+
+# 3. Get words needing review (carry forward to next week)
+sqlite3 -header -column workspace/tracker/educlaw.db \
+  "SELECT word, ipa, meaning, review_count FROM vocabulary WHERE mastered=0 ORDER BY review_count ASC LIMIT 20;"
+
+# 4. Get materials already used — avoid repeats
+sqlite3 -header -column workspace/tracker/educlaw.db \
+  "SELECT title, reference, skill, status FROM materials WHERE status != 'Not Started';"
+
+# 5. Get latest weekly summary — know current progress
+sqlite3 -header -column workspace/tracker/educlaw.db \
+  "SELECT * FROM weekly_summaries ORDER BY week DESC LIMIT 1;"
+```
+
+**Rules from §DB-PRE-CHECK:**
+- **Vocabulary dedup:** Every word you plan to assign in new sessions MUST be cross-checked against the `SELECT word FROM vocabulary` result. If a word already exists in the DB → DO NOT use it again. Pick a different word.
+- **Session continuity:** Use the last session number from DB to continue numbering (not restart from 1).
+- **Weak areas:** Prioritize skills/topics with low scores or `weak_areas` notes from past sessions.
+- **Review words:** Include 3-5 unmastered words from DB in the "Previous Session Review" section of each event.
+- **Materials rotation:** Do not reuse materials marked as 'Completed' unless no alternatives exist.
+- **If DB is empty** (first-time planning): skip dedup checks, proceed normally.
+
 **1.3. Extract key vocabulary & concepts**
 - List 30-50 Academic vocabulary per common IELTS topic.
 - Each word: meaning (in `user_lang`), IPA, collocations, IELTS-context example.
@@ -208,8 +242,48 @@ gcalcli --nocolor add --noprompt \
 - If time drifts outside window → STOP, ask user.
 - **Event deletion:** ONLY allowed for IELTS events created by EduClaw that have a matching event_id in the `sessions` table of `workspace/tracker/educlaw.db`. MUST ask user confirmation before deleting. Use: `yes | gcalcli delete "IELTS Phase X | Session Y"` (match by title). After deletion, run `sqlite3 workspace/tracker/educlaw.db "UPDATE sessions SET status='Deleted', notes='<reason>' WHERE event_id='...';"`.
 
-**2.5. Report results** (in `user_lang`)
+**2.5. §DB-SYNC — Insert into SQLite IMMEDIATELY after each event (MANDATORY)**
+
+After EACH successful `gcalcli add` call, you MUST immediately insert records into `educlaw.db`. This is NOT optional — an event without a DB record is an orphan that cannot be tracked, deleted, or reported.
+
+```bash
+# 1. INSERT session (IMMEDIATELY after gcalcli add succeeds)
+sqlite3 workspace/tracker/educlaw.db "INSERT INTO sessions \
+  (date, phase, session, skill, topic, event_id, status, duration_min, vocab_count) \
+  VALUES ('<date>', <phase>, <session_num>, '<skill>', '<topic>', \
+  '<exact_event_title>', 'Planned', <duration>, 10);"
+
+# 2. INSERT all 10 vocabulary words for this session
+sqlite3 workspace/tracker/educlaw.db "INSERT INTO vocabulary \
+  (word, ipa, pos, meaning, collocations, example, topic, session_id) \
+  VALUES ('<word>', '<ipa>', '<pos>', '<meaning>', '<collocations>', '<example>', '<topic>', \
+  (SELECT id FROM sessions WHERE event_id='<exact_event_title>'));"
+# ... repeat for all 10 words
+
+# 3. INSERT materials used in this session
+sqlite3 workspace/tracker/educlaw.db "INSERT OR IGNORE INTO materials \
+  (title, type, reference, skill, phase, status) \
+  VALUES ('<title>', '<type>', '<url_or_page>', '<skill>', <phase>, 'Not Started');"
+# ... repeat for each material
+```
+
+**§DB-SYNC Rules:**
+- **Atomic unit:** 1 calendar event = 1 session row + 10 vocabulary rows + N material rows. All must be inserted together.
+- **Timing:** Insert IMMEDIATELY after `gcalcli add` succeeds. Do NOT batch inserts at the end — if the process fails midway, earlier events would have no DB records.
+- **event_id:** MUST exactly match the calendar event title. This is the link between Calendar and DB.
+- **Vocabulary:** All 10 words from the event description MUST be inserted. This ensures §DB-PRE-CHECK can dedup for future sessions.
+- **Materials:** INSERT OR IGNORE to avoid duplicates (same title+reference).
+- **Verify after batch:** After all events are created, run a verification query:
+  ```bash
+  sqlite3 -header -column workspace/tracker/educlaw.db \
+    "SELECT date, skill, topic, status FROM sessions WHERE date >= date('now') ORDER BY date;"
+  ```
+  The count MUST match the number of `gcalcli add` calls. If mismatch → report error.
+
+**2.6. Report results** (in `user_lang`)
 - Total events created, date/time list, conflicts resolved.
+- Total sessions inserted into DB, total vocabulary words added, total materials logged.
+- Show verification: "X events created, X sessions in DB — synced."
 
 ---
 
@@ -311,6 +385,8 @@ Goal: Stabilize 7.0-7.5, exam-ready.
 8. **Respond in wrong language** → Detect `user_lang` first, stay consistent.
 9. **Show internal thinking/reasoning steps in messages** → Only show FINAL results and actions. Never expose step numbers ("1) Detect timezone... 2) Check calendar..."), internal logic, tool names, or intermediate processing. User sees clean output only.
 10. **Place unverified URLs in calendar events** → Every URL included in a calendar event description MUST be verified BEFORE the event is created. See §URL-VERIFICATION below.
+11. **Create calendar events without inserting into SQLite** → Every `gcalcli add` MUST be followed immediately by INSERT into `sessions`, `vocabulary`, and `materials` tables. An event without a DB record is FORBIDDEN. See §DB-SYNC.
+12. **Plan new sessions without checking existing DB data** → Before planning next week or any new sessions, MUST query `educlaw.db` for existing sessions, vocabulary (for dedup), weak areas, and materials. See §DB-PRE-CHECK.
 
 ### ✅ ALWAYS:
 1. Detect user language first — respond in that language consistently.
@@ -322,6 +398,8 @@ Goal: Stabilize 7.0-7.5, exam-ready.
 7. Keep IELTS terms in English regardless of `user_lang`.
 8. Use clean Markdown formatting.
 9. Verify every URL before placing it in a calendar event (see §URL-VERIFICATION).
+10. Insert every created event into SQLite immediately after `gcalcli add` (see §DB-SYNC).
+11. Query SQLite DB before planning any new sessions to dedup vocabulary and review progress (see §DB-PRE-CHECK).
 
 ### §URL-VERIFICATION — Link Content Verification (MANDATORY)
 
@@ -454,7 +532,7 @@ SELF-CHECK (complete after session):
 **This is the #1 quality rule. Violating it makes the entire plan useless.**
 
 Before creating ANY calendar event, you MUST verify:
-1. **Vocabulary**: Every session MUST have 10 DIFFERENT words. NO WORD may repeat across sessions within the same phase. Use topic-specific vocabulary (e.g., Listening session → audio/acoustic words; Writing Task 2 → argumentation words; Speaking Part 2 → narrative/descriptive words). If you catch yourself writing "Comprehend, Adequate, Interpret, Strategy, Analyze" in more than one session → STOP and regenerate.
+1. **Vocabulary**: Every session MUST have 10 DIFFERENT words. NO WORD may repeat across ANY session (not just within the same phase). Before assigning vocabulary, **MUST run §DB-PRE-CHECK** — query `SELECT word FROM vocabulary` and cross-check every planned word against existing DB entries. If a word already exists in the DB → DO NOT use it. Pick a different word. Use topic-specific vocabulary (e.g., Listening session → audio/acoustic words; Writing Task 2 → argumentation words; Speaking Part 2 → narrative/descriptive words). If you catch yourself writing "Comprehend, Adequate, Interpret, Strategy, Analyze" in more than one session → STOP and regenerate.
 2. **Lesson plan**: Each step must reference the EXACT material being used (book + test + section + page, or full URL). Generic text like "Deep dive into Speaking exercises" is FORBIDDEN. Write specifically: "Practice IELTS Speaking Part 2: Describe a place you visited recently. Record 2-minute response, time yourself. Compare with model answer from IELTS Advantage p.87."
 3. **Materials**: Must include real, specific resources for THIS session's topic. Not generic "Cambridge IELTS 17/18, IELTS Liz, Simon" — instead: "Cambridge IELTS 18, Test 2, Speaking Part 2-3 (p.112-115)" and "https://ieltsliz.com/speaking-part-2-model-answer-place/". **Every URL MUST be verified** per §URL-VERIFICATION before inclusion — fetch the URL, confirm it's live and contains relevant IELTS content. Dead or irrelevant links are FORBIDDEN.
 4. **Goals**: Must be measurable and session-specific. Not "Focus on foundation skills for Speaking" — instead: "Score 6+ on fluency criterion for 3 consecutive Part 2 responses. Reduce filler words (um, uh) to under 5 per response."
@@ -847,8 +925,9 @@ sqlite3 -header -column workspace/tracker/educlaw.db "SELECT COUNT(*) AS total, 
 
 ### Workflow by step:
 1. **On FIRST RUN (Step 0):** Initialize database with schema. Do NOT skip or delay.
-2. **When creating calendar events (Step 2):** INSERT a row into `sessions` for EACH event with `event_id` matching the calendar event title.
+2. **When creating calendar events (Step 2 — §DB-SYNC):** IMMEDIATELY after each `gcalcli add`, INSERT into `sessions` (with event_id = exact title), INSERT all 10 vocab words into `vocabulary`, INSERT materials into `materials`. This is atomic — event + DB = one unit.
 3. **After each study session:** UPDATE `sessions` (status → Completed, add score). INSERT new words into `vocabulary`.
+3b. **Before planning new sessions (Step 1 — §DB-PRE-CHECK):** Query `sessions` for continuity, `vocabulary` for word dedup, `materials` for rotation, `weekly_summaries` for progress. Every new word MUST be cross-checked — no duplicates allowed.
 4. **During daily prep cron:** SELECT tomorrow's session from `sessions`. SELECT review words from `vocabulary` WHERE mastered=0.
 5. **During weekly report cron:** SELECT aggregated stats from `sessions`, `vocabulary`, `weekly_summaries`. INSERT/UPDATE `weekly_summaries` for the current week.
 6. **When searching materials:** SELECT from `materials` to avoid duplicates. UPDATE status after use.
