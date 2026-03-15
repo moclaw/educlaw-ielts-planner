@@ -40,6 +40,8 @@ EduClaw là skill quản lý học IELTS toàn diện cho OpenClaw. Tự động
 
 - Web search trong OpenClaw — tìm tài liệu tự động
 
+> **📖 Lần đầu cài đặt?** Xem **[Hướng dẫn cài đặt đầy đủ (VI)](SETUP_VI.md)** | **[Complete Setup Guide (EN)](SETUP.md)** — hướng dẫn từng bước tất cả tool, API key, tạo bot, và nhiều hơn.
+
 ---
 
 ## Cài Đặt
@@ -201,6 +203,8 @@ EduClaw dùng SQLite database tại `workspace/tracker/educlaw.db` làm nguồn 
 educlaw-ielts-planner/
 ├── README.md           # Tài liệu tiếng Anh
 ├── README_VI.md        # Tài liệu tiếng Việt (file này)
+├── SETUP.md            # Hướng dẫn cài đặt đầy đủ (EN)
+├── SETUP_VI.md         # Hướng dẫn cài đặt đầy đủ (VI)
 ├── SKILL.md            # Prompt skill OpenClaw (logic chính)
 ├── WORKFLOW.md          # Hướng dẫn thực thi từng bước
 ├── schema.sql          # Schema SQLite database

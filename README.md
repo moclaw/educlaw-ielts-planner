@@ -39,7 +39,7 @@ EduClaw is a comprehensive IELTS study management skill for OpenClaw. It automat
 ### Optional
 
 - Web search enabled in OpenClaw — for material discovery
-
+> **📖 First time?** See the **[Complete Setup Guide (EN)](SETUP.md)** | **[Hướng dẫn cài đặt (VI)](SETUP_VI.md)** for step-by-step instructions covering all tools, API keys, bot creation, and more.
 ---
 
 ## Installation
@@ -249,6 +249,8 @@ Every calendar event contains a detailed, structured lesson plan:
 educlaw-ielts-planner/
 ├── README.md           # English documentation (this file)
 ├── README_VI.md        # Vietnamese documentation
+├── SETUP.md            # Complete setup & installation guide (EN)
+├── SETUP_VI.md         # Hướng dẫn cài đặt đầy đủ (VI)
 ├── SKILL.md            # OpenClaw skill prompt (core logic)
 ├── WORKFLOW.md          # Step-by-step execution guide
 ├── schema.sql          # SQLite database schema

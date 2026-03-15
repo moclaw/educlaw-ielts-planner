@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.2.0] - 2026-03-15
+
+### Added
+- **SETUP.md** — Comprehensive setup & installation guide (English) covering all tools, API keys, Discord/Telegram bot creation, Google Calendar, SQLite, and troubleshooting
+- **SETUP_VI.md** — Hướng dẫn cài đặt đầy đủ (Tiếng Việt) — bản dịch đầy đủ của SETUP.md
+- Links to setup guides in README.md and README_VI.md Prerequisites sections
+- SETUP.md + SETUP_VI.md listed in File Structure sections of both READMEs
+
 ## [1.1.0] - 2026-03-15
 
 ### Changed
