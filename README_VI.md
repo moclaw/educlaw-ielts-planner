@@ -190,6 +190,7 @@ EduClaw dùng SQLite database tại `workspace/tracker/educlaw.db` làm nguồn 
 | ❌ Không tự giải quyết xung đột | Hiện lựa chọn, chờ phản hồi |
 | ❌ Không hardcode múi giờ | Phát hiện từ hệ thống lúc chạy |
 | ❌ Không tạo >14 sự kiện cùng lúc | Chia theo 2 tuần |
+| ❌ Không dùng link chưa xác minh | Mọi URL trong event phải được fetch & kiểm tra nội dung trước khi đưa vào |
 | ✅ Luôn phát hiện ngôn ngữ | Phản hồi nhất quán |
 | ✅ Luôn hỏi lịch trước | Trước khi xếp lịch |
 | ✅ Luôn chờ phê duyệt | Trước khi tạo sự kiện |

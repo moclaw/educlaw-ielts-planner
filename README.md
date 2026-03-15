@@ -236,6 +236,7 @@ Every calendar event contains a detailed, structured lesson plan:
 | ❌ Never hardcode timezone | Detects from system at runtime |
 | ❌ Never create >14 events at once | Batches by 2 weeks |
 | ❌ Never show internal reasoning | Clean output only |
+| ❌ Never place unverified URLs | Every link in calendar events must be fetched & content-verified before inclusion |
 | ✅ Always detect user language | Responds consistently |
 | ✅ Always ask schedule preferences | Before any scheduling |
 | ✅ Always wait for approval | Before creating events |
